@@ -1,0 +1,82 @@
+package xspider.message;
+
+message sskv_t {
+    required string key = 1;
+    //required string value = 2;
+    optional string value = 2;
+}
+
+message msskv_t {
+    required string key = 1;
+    repeated sskv_t values = 2;
+}
+
+message sikv_t {
+    required string key = 1;
+    //required int32 value = 2;
+    optional int32 value = 2;
+}
+
+message msikv_t {
+    required string key = 1;
+    repeated sikv_t values = 2;
+}
+
+message Message
+{
+    enum MSG_TYPE {
+        PING = 1;
+        PONG = 2;
+        REQ_TASK = 3;
+        REP_TASK = 4;
+    }
+    required MSG_TYPE type = 1;
+    required bytes body = 2;
+}
+
+message Ping
+{
+    required string id = 1;
+    optional double time = 2;
+    optional double update_time = 3;
+    optional float cpu_percent = 4;
+    optional float mem_percent = 5;
+    optional float mem_res = 6;
+    optional float mem_res_max = 7;
+    optional float mem_virt = 8;
+    optional float mem_virt_max = 9;
+    optional float response_bytes = 10;
+    optional float response_count = 11;
+    optional float bandwidth = 12;
+    optional float bandwidth_max = 13;
+    optional float speed = 14;
+    optional float speed_max = 15;
+    optional float parsed = 16;
+    optional float store_kafka = 17;
+    optional float latency = 18;
+    optional float latency_max = 19;
+}
+
+message Pong
+{
+    optional double time = 1; // 赋值为接收到的Ping的time, 可以计算延迟
+}
+
+
+message TaskRequest 
+{
+    required string id = 1;
+    optional string addr = 2;
+    optional uint32 max = 3;
+    repeated sikv_t host_infos = 4;
+    //repeated msikv_t host_infos = 4;
+}
+
+message TaskReply
+{
+    required string id = 1;
+    repeated string tasks = 2;
+    repeated msskv_t headers = 3;
+    repeated msskv_t cookies = 4;
+}
+
