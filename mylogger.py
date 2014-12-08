@@ -3,49 +3,56 @@
 import sys
 import time
 
-DEBUG = 1
-INFO = 5
-WARN = 10
-ERROR = 20
- 
+import time
+import logging
+from logging.handlers import TimedRotatingFileHandler
 
-class MyLogger(object):
+level_d = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARN": logging.WARN,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "FATAL": logging.FATAL,
+}
 
-    def __init__(self, logger=None, level=DEBUG):
-        self.logger = logger
-        self.level = level
+class Logger(object):
 
-    def debug(self, msg):
-        if self.level > DEBUG:
-            return
-        if self.logger:
-            self.logger.debug(msg)
+    @staticmethod
+    def getLogger(logger_name, log_file, level='DEBUG', debug=True):
+        logger_ = logging.getLogger(logger_name)
+        logger_.setLevel(level_d.get(level, logging.DEBUG))
+        formater = logging.Formatter('[%(asctime)s] %(name)s %(filename)s +%(lineno)d %(levelname)s %(message)s')
+        handler = None
+        if debug:
+            handler = logging.StreamHandler()
         else:
-            ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-            print >>sys.stderr, '[%s] DEBUG %s' % (ts, msg)
-    def info(self, msg):
-        if self.level > INFO:
-            return
-        if self.logger:
-            self.logger.info(msg)
-        else:
-            ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-            print >>sys.stderr, '[%s] INFO %s' % (ts, msg)
-    def warn(self, msg):
-        if self.level > WARN:
-            return
-        if self.logger:
-            self.logger.warn(msg)
-        else:
-            ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-            print >>sys.stderr, '[%s] WARN %s' % (ts, msg)
-    def error(self, msg):
-        if self.level > ERROR:
-            return
-        if self.logger:
-            self.logger.error(msg)
-        else:
-            ts = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-            print >>sys.stderr, '[%s] ERROR %s' % (ts, msg)
+            handler = TimedRotatingFileHandler(log_file, 'h', 1, 24*10)
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(formater)
+        logger_.addHandler(handler)
+        return logger_
 
+if __name__ == "__main__":
+    logger_debug = Logger.getLogger('spider', None, level='DEBUG', debug=True) # <==> logger = Logger.getLogger('spider') # debug
+    logger_online = Logger.getLogger('spider', 'spider-<pid>.log', level='INFO', debug=False) # <==> logger = Logger.getLogger('spider') # debug
 
+    #logger = logger_debug
+    logger = logger_online
+
+    while True:
+        logger.debug('debug message')
+        logger.info('info message')
+        logger.warn('warn message')
+        logger.error('error message')
+        logger.critical('critical message')
+    
+        #logger.log(logging.INFO, "We have a %s", "mysterious problem", exc_info=1)
+        logger.log(logging.INFO, 'We have a %s %s', "mysterious problem", 'bb')
+        try:
+            raise ValueError('value Error')
+        except Exception, e:
+            logger.info('%s %s!!!', 'aaa', e, exc_info=1)
+    
+        time.sleep(0.01)
+    

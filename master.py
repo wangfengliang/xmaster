@@ -5,17 +5,18 @@
 # See LICENSE for details.
 
 import json
+import ConfigParser
 
 from twisted.internet.protocol import Protocol, Factory
 from twisted.protocols.basic import LineReceiver
 from twisted.internet import reactor
 
-from message_pb2 import *
 from statscol import StatsCollector, MStatsCollector
 from list_all_members import list_all_members, list_pb_all_numbers
 
 from UrlTaskContainer import UrlTaskContainer
-from mylogger import MyLogger
+from mylogger import Logger
+from message_pb2 import *
 
 import redis
 
@@ -29,38 +30,33 @@ class SpiderInfos(object):
             self.stats.set_value(spider_id, key, value)
         self.stats._print(spider_id)
 
-class EchoServer(LineReceiver):
-    def __init__(self, logger=None):
-        self.current_index = 0
-        self.logger = logger
+class MasterServer(LineReceiver):
+    def __init__(self):
+        self.master_name = g_config.get('master', 'name')
+        level = g_config.get('master', 'level') if g_config.has_option('master', 'level') else "DEBUG"
+        debug = g_config.getboolean('master', 'debug') if g_config.has_option('master', 'debug') else True
+        logfile = g_config.get('master', 'logfile') if g_config.has_option('master', 'logfile') else None
+        if not debug:
+            assert logfile, 'logfile must be set when not debug mode'
+        self.logger = Logger.getLogger(self.master_name, logfile, level=level, debug=debug)
+
         self.spider_status = SpiderInfos()
-        self.master_name = 'xmaster'
-        self.redis_instance = redis.Redis(host='localhost', port=6379, db=0)
+        redis_host = g_config.get('master', 'redis_addr') if g_config.has_option('master', 'redis_addr') else 'localhost'
+        redis_port = g_config.getint('master', 'redis_port') if g_config.has_option('master', 'redis_port') else 6379
+        self.redis_instance = redis.Redis(host=redis_host, port=redis_port, db=0)
         self.rqst_manager = UrlTaskContainer(self.master_name, use_cache=True, redis_instance=self.redis_instance, logger=self.logger)
 
     def connectionMade(self):
-        print 'connectionMade'
-        self.urls = []
-        with open('tasks.json') as fd:
-            for line in fd.readlines():
-                rqst = line.strip()
-                self.urls.append(rqst)
-                self.rqst_manager.add(rqst)
-        self.current_index = 0
+        self.logger.info('connectionMade')
 
     def lineReceived(self, line):
         #print 'dataReceived', line
- 
-        if self.current_index >= len(self.urls):
-            print 'no urls'
-            #return 
-            self.current_index = 0
 
-        # 解析
+        # 解析协议
         msg = Message()
         msg.ParseFromString(line)
-        print 'msg.type=', msg.type
         if msg.type == Message.PING:
+            self.logger.info('receive PING message!')
             ping = Ping()
             ping.ParseFromString(msg.body)
 
@@ -73,12 +69,10 @@ class EchoServer(LineReceiver):
             msgstr = msg.SerializeToString()
             self.sendLine(msgstr)
         elif msg.type == Message.REQ_TASK:
+            self.logger.info('receive REQ_TASK message')
             task_req = TaskRequest()
             task_req.ParseFromString(msg.body)
             exist_hosts_d = {}
-            #for domain_ in task_req.host_infos:
-            #    for host_ in domain_.values:
-            #        exist_hosts_d[host_.key] = host_.value
             for host_ in task_req.host_infos:
                 exist_hosts_d[host_.key] = host_.value
 
@@ -91,25 +85,24 @@ class EchoServer(LineReceiver):
                 msgstr = msg.SerializeToString()
                 self.sendLine(msgstr)
 
-            print 'aaaaaaaaa', exist_hosts_d 
-            print '222222222', self.rqst_manager.exists()
             rqsts = []
             for rqst in self.rqst_manager.pops(exist_hosts_d, 10): 
                 rqsts.append(rqst)
                 if len(rqsts) >= 100: # 避免同一包太大
-                    print 'bbbbbbbbbbbb', rqsts
+                    self.logger.debug('send task_reply %s' % rqsts)
                     _send_task_reply_(self, rqsts)
                     rqsts = []
             if len(rqsts) > 0:
-                print 'bbbbbbbbbbbb', rqsts
+                self.logger.debug('send task_reply %s' % rqsts)
                 _send_task_reply_(self, rqsts)
                 rqsts = []
         elif msg.type == Message.TASK_SEED: # 接收rqsts
+            self.logger.info('receive TASK_SEED message')
             task_seeds = TaskSeeds()
             task_seeds.ParseFromString(msg.body)
             task_seeds_rep = TaskSeedsReply(id=task_seeds.id)
             if task_seeds.id not in self.safe_seed_ids:
-                print 'no invalid task generate'
+                self.logger.warn('no invalid task_seeds id' % task_seeds.id)
                 task_seeds_rep.status = "deny"
             else:
                 task_seeds_rep.status = "ok"
@@ -120,7 +113,7 @@ class EchoServer(LineReceiver):
             msgstr = msg.SerializeToString()
             self.sendLine(msgstr)
         else:
-            print 'error message.type=%s' % msg.type
+            self.logger.error('invalid message.type=%s' % msg.type)
             msg.type = Message.TASK_SEED_REP
             msg.body = 'invalid msg.type=%s' % msg.type
             msgstr = msg.SerializeToString()
@@ -128,10 +121,22 @@ class EchoServer(LineReceiver):
     
 def main():
     f = Factory()
-    f.protocol = EchoServer
-    reactor.listenTCP(8000, f)
+    f.protocol = MasterServer
+    port = g_config.getint('master', 'port')
+    print >>sys.stderr, 'listenTCP %s' % port
+    reactor.listenTCP(port, f)
     reactor.run()
 
 if __name__ == '__main__':
+
+    if len(sys.argv) != 2:
+        print 'Usage: %s <config>' % sys.argv[0]
+        sys.exit(1)
+
+    # 读取配置文件
+    config_file = sys.argv[1]
+    g_config = ConfigParser.ConfigParser()
+    g_config.read(config_file)
+
     main()
 
