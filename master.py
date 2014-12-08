@@ -4,11 +4,11 @@
 # Copyright (c) Twisted Matrix Laboratories.
 # See LICENSE for details.
 
+import json
+
 from twisted.internet.protocol import Protocol, Factory
 from twisted.protocols.basic import LineReceiver
 from twisted.internet import reactor
-
-import json
 
 from message_pb2 import *
 from statscol import StatsCollector, MStatsCollector
@@ -16,6 +16,8 @@ from list_all_members import list_all_members, list_pb_all_numbers
 
 from UrlTaskContainer import UrlTaskContainer
 from mylogger import MyLogger
+
+import redis
 
 class SpiderInfos(object):
     def __init__(self):
@@ -28,12 +30,13 @@ class SpiderInfos(object):
         self.stats._print(spider_id)
 
 class EchoServer(LineReceiver):
-    def __init__(self):
+    def __init__(self, logger=None):
         self.current_index = 0
+        self.logger = logger
         self.spider_status = SpiderInfos()
-        #logger = MyLogger()
-        logger = None
-        self.rqst_manager = UrlTaskContainer('speed.conf', 5, logger)
+        self.master_name = 'xmaster'
+        self.redis_instance = redis.Redis(host='localhost', port=6379, db=0)
+        self.rqst_manager = UrlTaskContainer(self.master_name, use_cache=True, redis_instance=self.redis_instance, logger=self.logger)
 
     def connectionMade(self):
         print 'connectionMade'
@@ -78,7 +81,6 @@ class EchoServer(LineReceiver):
             #        exist_hosts_d[host_.key] = host_.value
             for host_ in task_req.host_infos:
                 exist_hosts_d[host_.key] = host_.value
-            print 'bbbbbbbbbb', exist_hosts_d
 
             def _send_task_reply_(self, rqsts):
                 task_rep = TaskReply()
@@ -89,19 +91,40 @@ class EchoServer(LineReceiver):
                 msgstr = msg.SerializeToString()
                 self.sendLine(msgstr)
 
+            print 'aaaaaaaaa', exist_hosts_d 
+            print '222222222', self.rqst_manager.exists()
             rqsts = []
             for rqst in self.rqst_manager.pops(exist_hosts_d, 10): 
                 rqsts.append(rqst)
                 if len(rqsts) >= 100: # 避免同一包太大
-                    print 'aaaaaaaaa', exist_hosts_d, rqsts
+                    print 'bbbbbbbbbbbb', rqsts
                     _send_task_reply_(self, rqsts)
                     rqsts = []
             if len(rqsts) > 0:
-                print 'cccccc', rqsts
+                print 'bbbbbbbbbbbb', rqsts
                 _send_task_reply_(self, rqsts)
                 rqsts = []
+        elif msg.type == Message.TASK_SEED: # 接收rqsts
+            task_seeds = TaskSeeds()
+            task_seeds.ParseFromString(msg.body)
+            task_seeds_rep = TaskSeedsReply(id=task_seeds.id)
+            if task_seeds.id not in self.safe_seed_ids:
+                print 'no invalid task generate'
+                task_seeds_rep.status = "deny"
+            else:
+                task_seeds_rep.status = "ok"
+                for rqst in task_seeds.tasks:
+                    self.rqst_manager.add(rqst)
+            msg.type = Message.TASK_SEED_REP
+            msg.body = task_seeds_rep.SerializeToString()
+            msgstr = msg.SerializeToString()
+            self.sendLine(msgstr)
         else:
-            print 'error'
+            print 'error message.type=%s' % msg.type
+            msg.type = Message.TASK_SEED_REP
+            msg.body = 'invalid msg.type=%s' % msg.type
+            msgstr = msg.SerializeToString()
+            self.sendLine(msgstr)
     
 def main():
     f = Factory()

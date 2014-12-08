@@ -29,6 +29,9 @@ message Message
         PONG = 2;
         REQ_TASK = 3;
         REP_TASK = 4;
+        TASK_SEED = 5;
+        TASK_SEED_REP = 6;
+        ERROR = 7;
     }
     required MSG_TYPE type = 1;
     required bytes body = 2;
@@ -80,3 +83,16 @@ message TaskReply
     repeated msskv_t cookies = 4;
 }
 
+message TaskSeeds
+{
+    required string id = 1;
+    repeated string tasks = 2;
+    repeated msskv_t headers = 3;
+    repeated msskv_t cookies = 4;
+}
+
+message TaskSeedsReply
+{
+    required string id = 1;
+    required string status = 2;
+}
