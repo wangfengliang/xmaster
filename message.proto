@@ -31,7 +31,9 @@ message Message
         REP_TASK = 4;
         TASK_SEED = 5;
         TASK_SEED_REP = 6;
-        ERROR = 7;
+        TASK_STATS = 7;
+        TASK_STATS_REP = 8;
+        ERROR = 9;
     }
     required MSG_TYPE type = 1;
     required bytes body = 2;
@@ -96,3 +98,17 @@ message TaskSeedsReply
     required string id = 1;
     required string status = 2;
 }
+
+message TaskStats
+{
+    required string id = 1;
+    required double time = 2;
+}
+message TaskStatsReply
+{
+    required string id = 1;
+    required double time = 2;
+    repeated sikv_t host_infos = 4;
+}
+
+

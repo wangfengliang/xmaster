@@ -36,9 +36,10 @@ class MasterServer(LineReceiver):
         level = g_config.get('master', 'level') if g_config.has_option('master', 'level') else "DEBUG"
         debug = g_config.getboolean('master', 'debug') if g_config.has_option('master', 'debug') else True
         logfile = g_config.get('master', 'logfile') if g_config.has_option('master', 'logfile') else None
+        logname = g_config.get('master', 'logname') if g_config.has_option('master', 'logname') else None
         if not debug:
             assert logfile, 'logfile must be set when not debug mode'
-        self.logger = Logger.getLogger(self.master_name, logfile, level=level, debug=debug)
+        self.logger = Logger.getLogger(logname, logfile, level=level, debug=debug)
 
         self.spider_status = SpiderInfos()
         redis_host = g_config.get('master', 'redis_addr') if g_config.has_option('master', 'redis_addr') else 'localhost'
@@ -50,7 +51,7 @@ class MasterServer(LineReceiver):
         self.logger.info('connectionMade')
 
     def lineReceived(self, line):
-        #print 'dataReceived', line
+        print 'dataReceived', line
 
         # 解析协议
         msg = Message()
@@ -88,7 +89,7 @@ class MasterServer(LineReceiver):
             rqsts = []
             for rqst in self.rqst_manager.pops(exist_hosts_d, 10): 
                 rqsts.append(rqst)
-                if len(rqsts) >= 100: # 避免同一包太大
+                if len(rqsts) >= 10: # 避免同一包太大
                     self.logger.debug('send task_reply %s' % rqsts)
                     _send_task_reply_(self, rqsts)
                     rqsts = []
@@ -101,16 +102,38 @@ class MasterServer(LineReceiver):
             task_seeds = TaskSeeds()
             task_seeds.ParseFromString(msg.body)
             task_seeds_rep = TaskSeedsReply(id=task_seeds.id)
-            if task_seeds.id not in self.safe_seed_ids:
-                self.logger.warn('no invalid task_seeds id' % task_seeds.id)
-                task_seeds_rep.status = "deny"
-            else:
-                task_seeds_rep.status = "ok"
-                for rqst in task_seeds.tasks:
-                    self.rqst_manager.add(rqst)
+            #self.safe_seed_ids = [] # TODO: 
+            #if task_seeds.id not in self.safe_seed_ids:
+            #    self.logger.warn('no invalid task_seeds id' % task_seeds.id)
+            #    task_seeds_rep.status = "deny"
+            #else:
+            task_seeds_rep.status = "ok"
+            for rqst in task_seeds.tasks:
+                self.rqst_manager.add(rqst)
             msg.type = Message.TASK_SEED_REP
             msg.body = task_seeds_rep.SerializeToString()
             msgstr = msg.SerializeToString()
+            self.sendLine(msgstr)
+        elif msg.type == Message.TASK_STATS:
+            self.logger.info('receive TASK_STATS message')
+            # TASK_STATS_REP
+            task_stats = TaskStats()
+            task_stats.ParseFromString(msg.body)
+            task_stats_rep = TaskStatsReply(id=task_stats.id, time=task_stats.time)
+            # 当前队列情况
+            domain_exist_info = self.rqst_manager.exists()
+            for domain_ in domain_exist_info.keys():
+                host_exist_info = domain_exist_info[domain_]
+                if not host_exist_info: continue
+                sikvs = []
+                for host_ in host_exist_info.keys():
+                    sikv = sikv_t(key=host_, value=host_exist_info[host_])
+                    sikvs.append(sikv)
+                task_stats_rep.host_infos.extend(sikvs)
+            msg.type = Message.TASK_STATS_REP
+            msg.body = task_stats_rep.SerializeToString()
+            msgstr = msg.SerializeToString()
+            print 'aaaaaaaaaaaaaaaaaaaaaaaaa'
             self.sendLine(msgstr)
         else:
             self.logger.error('invalid message.type=%s' % msg.type)
