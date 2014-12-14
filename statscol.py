@@ -50,6 +50,6 @@ class MStatsCollector(object):
 
     def _print(self, id):
         if id not in self.mstats:
-            print 'stats:%s not exist' % id
+            return
         self.mstats[id]._print()
 

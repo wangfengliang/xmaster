@@ -21,7 +21,7 @@ class HostContainer(object):
         if self.use_cache:
             redis_host_zkey = "spider:%s:hosts:%s" % (self.master_name, self.hostname_)
             sz = self.redis_instance.zcard(redis_host_zkey)
-            self.logger.debug('cache %s %s' % (self.hostname_, sz))
+            #self.logger.debug('cache %s %s' % (self.hostname_, sz))
             return sz
         return len(self.mem_queue)
     
@@ -38,7 +38,10 @@ class HostContainer(object):
             redis_host_zkey = "spider:%s:hosts:%s" % (self.master_name, self.hostname_)
             ret = self.redis_instance.zadd(redis_host_zkey, rqst, 1.0) # TODO: 判断返回结果
             if ret == 1:
-                self.logger.debug('cache %s add %s' % (self.hostname_, rqst))
+                self.logger.debug('cache add %s %s' % (self.hostname_, rqst))
+            else:
+                self.logger.debug('cache add failed %s %s' % (self.hostname_, rqst))
+    
             return True 
         else:
             self.mem_queue.append(rqst)
@@ -105,12 +108,27 @@ class UrlTaskContainer(object):
             self.host_dict[url_hostname] = HostContainer(self.master_name, url_hostname, use_cache=self.use_cache, redis_instance=self.redis_instance, logger=self.logger)
         return self.host_dict[url_hostname].add(rqst)
 
-    def pops(self, exist_hosts_d, rqst_per_host=10):
+#    def pops(self, hosts_need_d, rqst_per_host=10):
+#        for host_ in self.host_dict.keys():
+#            n = rqst_per_host
+#            if host_ in hosts_need_d:
+#                n = hosts_need_d[host_]
+#            for i in range(n):
+#                rqst = self.host_dict[host_].pop()
+#                if not rqst: break
+#                yield rqst
+#
+
+    def pops(self, hosts_exist_d, rqst_per_host=10):
         for host_ in self.host_dict.keys():
-            for i in range(rqst_per_host):
+            n = rqst_per_host
+            if host_ in hosts_exist_d:
+                n -= hosts_exist_d[host_]
+            if n <= 0: continue
+            for i in range(n):
                 rqst = self.host_dict[host_].pop()
-                if rqst:
-                    yield rqst
+                if not rqst: break
+                yield rqst
 
     def exists(self):
         d = {}

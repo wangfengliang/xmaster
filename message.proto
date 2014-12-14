@@ -22,6 +22,12 @@ message msikv_t {
     repeated sikv_t values = 2;
 }
 
+message sfkv_t {
+    required string key = 1;
+    optional float value = 2;
+}
+
+
 message Message
 {
     enum MSG_TYPE {
@@ -36,79 +42,48 @@ message Message
         ERROR = 9;
     }
     required MSG_TYPE type = 1;
-    required bytes body = 2;
+    required uint64 ts = 2;
+    optional bytes body = 3;
 }
 
 message Ping
 {
-    required string id = 1;
-    optional double time = 2;
-    optional double update_time = 3;
-    optional float cpu_percent = 4;
-    optional float mem_percent = 5;
-    optional float mem_res = 6;
-    optional float mem_res_max = 7;
-    optional float mem_virt = 8;
-    optional float mem_virt_max = 9;
-    optional float response_bytes = 10;
-    optional float response_count = 11;
-    optional float bandwidth = 12;
-    optional float bandwidth_max = 13;
-    optional float speed = 14;
-    optional float speed_max = 15;
-    optional float parsed = 16;
-    optional float store_kafka = 17;
-    optional float latency = 18;
-    optional float latency_max = 19;
+    required string spider_id = 1;
+    repeated sfkv_t status = 2;
 }
 
 message Pong
 {
-    optional double time = 1; // 赋值为接收到的Ping的time, 可以计算延迟
 }
 
 
 message TaskRequest 
 {
-    required string id = 1;
-    optional string addr = 2;
-    optional uint32 max = 3;
-    repeated sikv_t host_infos = 4;
-    //repeated msikv_t host_infos = 4;
+    repeated sikv_t hosts_need = 1;
+    repeated sikv_t hosts_exist = 2;
 }
 
+// msg.body zlib压缩
 message TaskReply
 {
-    required string id = 1;
-    repeated string tasks = 2;
-    repeated msskv_t headers = 3;
-    repeated msskv_t cookies = 4;
+    repeated string tasks = 1;
 }
 
 message TaskSeeds
 {
-    required string id = 1;
-    repeated string tasks = 2;
-    repeated msskv_t headers = 3;
-    repeated msskv_t cookies = 4;
+    repeated string tasks = 1;
 }
 
 message TaskSeedsReply
 {
-    required string id = 1;
-    required string status = 2;
+    required string status = 1;
 }
 
 message TaskStats
 {
-    required string id = 1;
-    required double time = 2;
 }
 message TaskStatsReply
 {
-    required string id = 1;
-    required double time = 2;
-    repeated sikv_t host_infos = 4;
+    repeated sikv_t host_infos = 1;
 }
-
 
