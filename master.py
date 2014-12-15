@@ -22,16 +22,6 @@ from message_pb2 import *
 
 import redis
 
-class SpiderInfos(object):
-    def __init__(self):
-        self.stats = MStatsCollector()
-
-    def update(self, ping):
-        spider_id = ping.spider_id
-        for sfkv in ping.status:
-            self.stats.set_value(spider_id, sfkv.key, sfkv.value)
-        self.stats._print(spider_id)
-
 class MasterServer(LineReceiver):
     def __init__(self):
         global g_master_name, g_redis_addr, g_redis_port, g_logger
@@ -39,9 +29,9 @@ class MasterServer(LineReceiver):
         self.redis_addr = g_redis_addr
         self.redis_port = g_redis_port
         self.logger = g_logger
-        self.spider_status = SpiderInfos()
         self.redis_instance = redis.Redis(host=self.redis_addr, port=self.redis_port, db=0)
         self.rqst_manager = UrlTaskContainer(self.master_name, use_cache=True, redis_instance=self.redis_instance, logger=self.logger)
+        self.stats = MStatsCollector(self.logger)
 
     def connectionLost(self, reason=connectionDone):
         self.logger.info('connectionLost')
@@ -69,7 +59,7 @@ class MasterServer(LineReceiver):
             ping = Ping()
             ping.ParseFromString(zlib.decompress(msg.body))
 
-            self.spider_status.update(ping) # 记录每个节点的状态, TODO: redis存储
+            self.update(ping) # 记录每个节点的状态, TODO: redis存储
 
             pong = Pong()
             msg.type = Message.PONG
@@ -91,16 +81,19 @@ class MasterServer(LineReceiver):
             for host_ in task_req.hosts_exist:
                 hosts_exist_d[host_.key] = host_.value
 
+            n = 0
             rqsts = []
-            #for rqst in self.rqst_manager.pops(hosts_need_d, 20): 
             for rqst in self.rqst_manager.pops(hosts_exist_d, 20): 
                 rqsts.append(rqst)
                 if len(rqsts) >= 100: # 避免同一包太大
+                    n += len(rqsts)
                     self._send_task_reply_(cur_time, rqsts)
                     rqsts = []
             if len(rqsts) > 0:
+                n += len(rqsts)
                 self._send_task_reply_(cur_time, rqsts)
                 rqsts = []
+            self.logger.info('receive REQ_TASK message, send %s rqsts' % n)
         elif msg.type == Message.TASK_SEED: # selector
             self.logger.info('receive TASK_SEED message %s' % (cur_time-msg.ts))
             task_seeds = TaskSeeds()
@@ -125,7 +118,14 @@ class MasterServer(LineReceiver):
             self.sendLine(msgstr)
         else:
             self.logger.error('invalid message type=%s' % (msg.type))
-    
+ 
+    def update(self, ping):
+        spider_id = ping.spider_id
+        for sfkv in ping.status:
+            self.stats.set_value(spider_id, sfkv.key, sfkv.value)
+        self.stats._print(spider_id)
+
+   
 def main():
     f = Factory()
     f.protocol = MasterServer

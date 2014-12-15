@@ -4,8 +4,9 @@
 
 class StatsCollector(object):
 
-    def __init__(self):
+    def __init__(self, logger):
         self._stats = {}
+        self.logger = logger
 
     def get_stats(self):
         return self._stats
@@ -33,19 +34,20 @@ class StatsCollector(object):
         self._stats[key] = min(self._stats.setdefault(key, value), value)
 
     def _print(self):
-        print self._stats
+        self.logger.info("spiderInfo: %s" % self._stats)
 
 class MStatsCollector(object):
 
-    def __init__(self):
+    def __init__(self, logger):
         self.mstats = {}
+        self.logger = logger
 
     def persist_stats(self, id, stats):
         self.mstats[id] = stats
 
     def set_value(self, id, key, value):
         if id not in self.mstats:
-            self.mstats[id] = StatsCollector()
+            self.mstats[id] = StatsCollector(self.logger)
         self.mstats[id].set_value(key, value)
 
     def _print(self, id):
