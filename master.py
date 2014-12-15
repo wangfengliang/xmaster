@@ -34,21 +34,14 @@ class SpiderInfos(object):
 
 class MasterServer(LineReceiver):
     def __init__(self):
-        self.master_name = g_config.get('master', 'name')
-        level = g_config.get('master', 'level') if g_config.has_option('master', 'level') else "DEBUG"
-        debug = g_config.getboolean('master', 'debug') if g_config.has_option('master', 'debug') else True
-        logfile = g_config.get('master', 'logfile') if g_config.has_option('master', 'logfile') else None
-        logname = g_config.get('master', 'logname') if g_config.has_option('master', 'logname') else None
-        if not debug:
-            assert logfile, 'logfile must be set when not debug mode'
-        self.logger = Logger.getLogger(logname, logfile, level=level, debug=debug) # TODO: bugfix xspider连接多次后打印多条相同日志
-
+        global g_master_name, g_redis_addr, g_redis_port, g_logger
+        self.master_name = g_master_name
+        self.redis_addr = g_redis_addr
+        self.redis_port = g_redis_port
+        self.logger = g_logger
         self.spider_status = SpiderInfos()
-        redis_host = g_config.get('master', 'redis_addr') if g_config.has_option('master', 'redis_addr') else 'localhost'
-        redis_port = g_config.getint('master', 'redis_port') if g_config.has_option('master', 'redis_port') else 6379
-        self.redis_instance = redis.Redis(host=redis_host, port=redis_port, db=0)
+        self.redis_instance = redis.Redis(host=self.redis_addr, port=self.redis_port, db=0)
         self.rqst_manager = UrlTaskContainer(self.master_name, use_cache=True, redis_instance=self.redis_instance, logger=self.logger)
-        self.req_task_config = {} # 配置spider请求时每个host的最大发送量
 
     def connectionLost(self, reason=connectionDone):
         self.logger.info('connectionLost')
@@ -137,7 +130,7 @@ def main():
     f = Factory()
     f.protocol = MasterServer
     port = g_config.getint('master', 'port')
-    print >>sys.stderr, 'listenTCP %s' % port
+    g_logger.info('listenTCP %s' % port)
     reactor.listenTCP(port, f)
     reactor.run()
 
@@ -151,6 +144,17 @@ if __name__ == '__main__':
     config_file = sys.argv[1]
     g_config = ConfigParser.ConfigParser()
     g_config.read(config_file)
+
+    g_master_name = g_config.get('master', 'name')
+    level = g_config.get('master', 'level') if g_config.has_option('master', 'level') else "DEBUG"
+    debug = g_config.getboolean('master', 'debug') if g_config.has_option('master', 'debug') else True
+    logfile = g_config.get('master', 'logfile') if g_config.has_option('master', 'logfile') else None
+    logname = g_config.get('master', 'logname') if g_config.has_option('master', 'logname') else None
+    if not debug:
+        assert logfile, 'logfile must be set when not debug mode'
+    g_logger = Logger.getLogger(logname, logfile, level=level, debug=debug)
+    g_redis_addr = g_config.get('master', 'redis_addr') if g_config.has_option('master', 'redis_addr') else 'localhost'
+    g_redis_port = g_config.getint('master', 'redis_port') if g_config.has_option('master', 'redis_port') else 6379
 
     main()
 
